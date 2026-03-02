@@ -32,7 +32,28 @@ cat ~/.ssh/dozor_deploy.pub
 4. В поле `Key` вставьте содержимое `~/.ssh/dozor_deploy.pub`.
 5. `Allow write access` оставьте выключенным.
 
-Настроить SSH-клиент:
+### 2.1 Настроить SSH-клиент (Вариант A: через `nano`)
+1. Откройте файл:
+```bash
+nano ~/.ssh/config
+```
+2. Вставьте:
+```text
+Host github.com
+  IdentityFile ~/.ssh/dozor_deploy
+  IdentitiesOnly yes
+```
+3. Сохраните файл:
+- `Ctrl + O`
+- `Enter`
+- `Ctrl + X`
+4. Поставьте права и проверьте:
+```bash
+chmod 600 ~/.ssh/config
+ssh -T git@github.com
+```
+
+### 2.2 Настроить SSH-клиент (Вариант B: скриптом)
 ```bash
 cat >> ~/.ssh/config <<'EOF'
 Host github.com
@@ -58,6 +79,7 @@ cd DoZoRProject
 ```
 
 ## 4) Установка Docker Engine + Compose plugin
+### 4.1 Вариант A: вручную командами
 ```bash
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
@@ -67,6 +89,25 @@ sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
+```
+
+### 4.2 Вариант B: скриптом
+```bash
+cat > ~/install_docker.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+echo "Docker installed. Re-login SSH or run: newgrp docker"
+EOF
+chmod +x ~/install_docker.sh
+bash ~/install_docker.sh
 ```
 
 После добавления в группу `docker` сделайте одно из двух:
@@ -126,8 +167,41 @@ docker compose logs -f telethon_worker
 docker compose logs -f bot_poller
 ```
 
-## Автозапуск при старте Ubuntu (копировать и вставить)
-Выполните команды ниже целиком:
+## Автозапуск при старте Ubuntu
+### Вариант A: через `nano` (пошагово)
+1. Откройте файл службы:
+```bash
+sudo nano /etc/systemd/system/dozor.service
+```
+2. Вставьте текст:
+```ini
+[Unit]
+Description=DoZoRProject (docker compose)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=YOUR_LINUX_USER
+WorkingDirectory=/home/YOUR_LINUX_USER/projects/DoZoRProject
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+```
+3. Замените `YOUR_LINUX_USER` на пользователя из `whoami`.
+4. Сохраните: `Ctrl + O` -> `Enter` -> `Ctrl + X`.
+5. Включите службу:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now dozor.service
+systemctl status dozor.service --no-pager
+```
+
+### Вариант B: скриптом (копировать и вставить)
 ```bash
 cd ~/projects/DoZoRProject
 USERNAME="$(whoami)"
@@ -206,6 +280,25 @@ sudo chmod +x /usr/local/bin/dozor-update.sh
 Скрипт использует домашний каталог текущего пользователя (`${HOME}`).
 
 ### 2) Создать systemd service для обновления
+Вариант A (через `nano`):
+```bash
+sudo nano /etc/systemd/system/dozor-update.service
+```
+Вставьте:
+```ini
+[Unit]
+Description=DoZoRProject update from GitHub
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=YOUR_LINUX_USER
+ExecStart=/usr/local/bin/dozor-update.sh
+```
+Сохраните: `Ctrl + O` -> `Enter` -> `Ctrl + X`.
+
+Вариант B (скриптом):
 ```bash
 CURRENT_USER="$USER"
 sudo tee /etc/systemd/system/dozor-update.service >/dev/null <<EOF
@@ -222,6 +315,26 @@ EOF
 ```
 
 ### 3) Создать systemd timer
+Вариант A (через `nano`):
+```bash
+sudo nano /etc/systemd/system/dozor-update.timer
+```
+Вставьте:
+```ini
+[Unit]
+Description=Run DoZoRProject update periodically
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+Сохраните: `Ctrl + O` -> `Enter` -> `Ctrl + X`.
+
+Вариант B (скриптом):
 ```bash
 sudo tee /etc/systemd/system/dozor-update.timer >/dev/null <<'EOF'
 [Unit]
@@ -238,12 +351,29 @@ EOF
 ```
 
 ### 4) Включить автообновление
+Вариант A (по командам):
 ```bash
 sudo systemctl daemon-reload
 sudo touch /var/log/dozor-update.log
 sudo chmod 666 /var/log/dozor-update.log
 sudo systemctl enable --now dozor-update.timer
 systemctl list-timers --all | grep dozor-update
+```
+
+Вариант B (скриптом):
+```bash
+cat > ~/enable_dozor_autoupdate.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+sudo systemctl daemon-reload
+sudo touch /var/log/dozor-update.log
+sudo chmod 666 /var/log/dozor-update.log
+sudo systemctl enable --now dozor-update.timer
+systemctl list-timers --all | grep dozor-update || true
+echo "Auto-update timer enabled"
+EOF
+chmod +x ~/enable_dozor_autoupdate.sh
+bash ~/enable_dozor_autoupdate.sh
 ```
 
 Важно: автообновление делает `git reset --hard origin/master`, то есть локальные изменения в папке проекта будут удаляться.
