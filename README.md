@@ -149,6 +149,88 @@ sudo systemctl enable --now dozor.service
 systemctl status dozor.service --no-pager
 ```
 
+`dozor.service` обеспечивает автозапуск проекта после перезагрузки ПК/сервера.
+
+## Автообновление каждые 30 минут
+### 1) Создать скрипт обновления
+```bash
+sudo tee /usr/local/bin/dozor-update.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="${HOME}/projects/DoZoRProject"
+LOG_FILE="/var/log/dozor-update.log"
+
+exec >> "$LOG_FILE" 2>&1
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] update start"
+
+cd "$PROJECT_DIR"
+git fetch origin master
+LOCAL_SHA="$(git rev-parse HEAD)"
+REMOTE_SHA="$(git rev-parse origin/master)"
+
+if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] no changes"
+  exit 0
+fi
+
+git reset --hard origin/master
+docker compose up -d --build
+docker compose exec -T web python manage.py migrate
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] update done: $LOCAL_SHA -> $REMOTE_SHA"
+EOF
+sudo chmod +x /usr/local/bin/dozor-update.sh
+```
+
+Скрипт использует домашний каталог текущего пользователя (`${HOME}`).
+
+### 2) Создать systemd service для обновления
+```bash
+CURRENT_USER="$USER"
+sudo tee /etc/systemd/system/dozor-update.service >/dev/null <<EOF
+[Unit]
+Description=DoZoRProject update from GitHub
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=${CURRENT_USER}
+ExecStart=/usr/local/bin/dozor-update.sh
+EOF
+```
+
+### 3) Создать systemd timer
+```bash
+sudo tee /etc/systemd/system/dozor-update.timer >/dev/null <<'EOF'
+[Unit]
+Description=Run DoZoRProject update periodically
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+### 4) Включить автообновление
+```bash
+sudo systemctl daemon-reload
+sudo touch /var/log/dozor-update.log
+sudo chmod 666 /var/log/dozor-update.log
+sudo systemctl enable --now dozor-update.timer
+systemctl list-timers --all | grep dozor-update
+```
+
+### 5) Проверка автообновления
+```bash
+sudo systemctl start dozor-update.service
+tail -n 50 /var/log/dozor-update.log
+```
+
 ## Обновление до свежего `master`
 ```bash
 cd ~/projects/DoZoRProject
