@@ -126,10 +126,11 @@ docker compose logs -f telethon_worker
 docker compose logs -f bot_poller
 ```
 
-## Автозапуск при старте Ubuntu
-Создать systemd unit:
+## Автозапуск при старте Ubuntu (копировать и вставить)
+Выполните команды ниже целиком:
 ```bash
-CURRENT_USER="$USER"
+cd ~/projects/DoZoRProject
+USERNAME="$(whoami)"
 sudo tee /etc/systemd/system/dozor.service >/dev/null <<EOF
 [Unit]
 Description=DoZoRProject (docker compose)
@@ -138,8 +139,8 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-User=${CURRENT_USER}
-WorkingDirectory=/home/${CURRENT_USER}/projects/DoZoRProject
+User=${USERNAME}
+WorkingDirectory=/home/${USERNAME}/projects/DoZoRProject
 RemainAfterExit=yes
 ExecStart=/usr/bin/docker compose up -d --build
 ExecStop=/usr/bin/docker compose down
@@ -148,16 +149,28 @@ TimeoutStartSec=0
 [Install]
 WantedBy=multi-user.target
 EOF
-```
 
-Включить:
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now dozor.service
 systemctl status dozor.service --no-pager
+docker compose ps
 ```
 
-`dozor.service` обеспечивает автозапуск проекта после перезагрузки ПК/сервера.
+Проверка после перезагрузки:
+```bash
+sudo reboot
+```
+После входа:
+```bash
+cd ~/projects/DoZoRProject
+docker compose ps
+```
+
+Если не запустилось:
+```bash
+journalctl -u dozor.service -n 100 --no-pager
+systemctl status docker --no-pager
+```
 
 ## Автообновление каждые 30 минут
 ### 1) Создать скрипт обновления
