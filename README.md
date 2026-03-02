@@ -413,3 +413,60 @@ docker compose exec -T web python manage.py migrate
 - `http://<IP-СЕРВЕРА>:8000/telegram/filters/`
 - `http://<IP-СЕРВЕРА>:8000/telegram/monitoring/`
 - `http://<IP-СЕРВЕРА>:8000/telegram/search/`
+
+## Частая ошибка: `address already in use` на порту `5432`
+Если при `docker compose up` видите ошибку:
+`failed to bind host port for 0.0.0.0:5432 ... address already in use`,
+значит порт `5432` уже занят другим процессом.
+
+### Вариант A: освободить порт `5432`
+```bash
+cd ~/projects/DoZoRProject
+docker compose down
+sudo ss -ltnp | grep :5432 || true
+docker ps --format "table {{.Names}}\t{{.Ports}}" | grep 5432 || true
+```
+
+Если порт занят системным PostgreSQL:
+```bash
+sudo systemctl stop postgresql
+sudo systemctl disable postgresql
+```
+
+Если порт занят другим Docker-контейнером:
+```bash
+docker stop CONTAINER_NAME
+```
+
+После этого:
+```bash
+cd ~/projects/DoZoRProject
+docker compose up -d --build db web bot_poller
+docker compose exec -T web python manage.py migrate
+```
+
+### Вариант B: сменить порт PostgreSQL в проекте (например `5432` -> `5433`)
+1. Откройте `docker-compose.yml`:
+```bash
+cd ~/projects/DoZoRProject
+nano docker-compose.yml
+```
+2. Найдите сервис `db` и блок `ports`, обычно там строка:
+```yaml
+- "5432:5432"
+```
+3. Замените на:
+```yaml
+- "5433:5432"
+```
+4. Сохраните файл: `Ctrl + O` -> `Enter` -> `Ctrl + X`.
+5. Перезапустите:
+```bash
+docker compose down
+docker compose up -d --build db web bot_poller
+docker compose exec -T web python manage.py migrate
+```
+
+Важно:
+- Внутри Docker сеть и контейнеры продолжают использовать `db:5432`.
+- Меняется только внешний порт на хосте (для подключений с машины Ubuntu).
