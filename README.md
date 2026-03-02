@@ -6,6 +6,7 @@
 - Сначала запускаются `db`, `web`, `bot_poller`.
 - Затем выполняется авторизация Telegram-сессии через веб.
 - Только после этого запускается `telethon_worker`.
+- В этой инструкции проект запускается в Docker. `Python .venv` на сервере создавать не нужно.
 
 Если Telegram-сессия не авторизована, `telethon_worker` нормально работать не будет.
 
@@ -44,6 +45,10 @@ ssh -T git@github.com
 
 Ожидаемо увидеть сообщение вида: `Hi <user/repo>! You've successfully authenticated...`.
 
+Если при первом подключении спросит:
+`Are you sure you want to continue connecting (yes/no/[fingerprint])?`
+нужно ввести: `yes`.
+
 ## 3) Клонирование проекта
 ```bash
 mkdir -p ~/projects
@@ -62,8 +67,11 @@ sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
-newgrp docker
 ```
+
+После добавления в группу `docker` сделайте одно из двух:
+1. Выйдите из SSH-сессии и зайдите снова.
+2. Или выполните `newgrp docker` в текущем терминале.
 
 Проверка:
 ```bash
@@ -224,6 +232,8 @@ sudo chmod 666 /var/log/dozor-update.log
 sudo systemctl enable --now dozor-update.timer
 systemctl list-timers --all | grep dozor-update
 ```
+
+Важно: автообновление делает `git reset --hard origin/master`, то есть локальные изменения в папке проекта будут удаляться.
 
 ### 5) Проверка автообновления
 ```bash
