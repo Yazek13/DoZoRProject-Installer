@@ -3,7 +3,7 @@
 Удобный репозиторий для установки и первичного запуска `DoZoRProject` на чистой Ubuntu.
 
 ## Что делает installer
-- Устанавливает базовые пакеты и Docker.
+- Устанавливает базовые пакеты и Docker через отдельный `bootstrap_ubuntu.sh`.
 - Помогает настроить SSH deploy key для приватного репозитория `Yazek13/DoZoRProject`.
 - Клонирует проект в `~/projects/DoZoRProject`.
 - Поднимает Docker-стек и применяет миграции.
@@ -24,7 +24,23 @@ git clone https://github.com/Yazek13/DoZoRProject-Installer.git
 cd DoZoRProject-Installer
 ```
 
-### 3. Запустить установку
+### 3. Установить системные зависимости
+```bash
+sudo bash bootstrap_ubuntu.sh
+```
+
+Скрипт ставит:
+- `git`
+- `curl`
+- `ca-certificates`
+- `gnupg`
+- `lsb-release`
+- `openssh-client`
+- `nano`
+- Docker Engine
+- Docker Compose plugin
+
+### 4. Запустить установку проекта
 ```bash
 sudo bash setup_ubuntu.sh
 ```
@@ -43,6 +59,8 @@ sudo bash setup_ubuntu.sh master
    3. Вставить ключ
    4. `Allow write access` оставить OFF
 3. Нажать Enter и продолжить установку.
+
+`setup_ubuntu.sh` больше не ставит системные пакеты. Если не хватает `git`/`curl`/`docker`, он остановится и попросит сначала выполнить `bootstrap_ubuntu.sh`.
 
 ## Что сделать после установки
 
@@ -186,6 +204,13 @@ cd ~/projects/DoZoRProject
 sudo bash scripts/install_auto_update.sh
 ```
 Скрипт сам предложит выбрать `dev` или `master`.
+
+## Повторная подготовка зависимостей
+Если сервер новый или Docker/Compose ещё не установлены:
+```bash
+cd ~/DoZoRProject-Installer
+sudo bash bootstrap_ubuntu.sh
+```
 
 ## Частые проблемы
 

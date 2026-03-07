@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Single working setup script for clean Ubuntu + private GitHub repo.
+# Setup script for Ubuntu after bootstrap.
 # Steps:
-# - install git/curl
+# - check required commands
 # - generate deploy key
 # - wait for user to add deploy key in GitHub
 # - configure SSH
 # - clone repo (SSH)
-# - install Docker + Compose
 # - create .env from install_bundle/.env.example
 # - start services, run migrations
 # - enable autostart + auto-update (systemd)
@@ -41,7 +40,7 @@ choose_branch() {
 BRANCH="$(choose_branch "${1:-}")"
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Run as root: sudo bash scripts/setup_ubuntu.sh"
+  echo "Run as root: sudo bash setup_ubuntu.sh"
   exit 1
 fi
 
@@ -50,9 +49,25 @@ HOME_DIR="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 DEPLOY_DIR="${HOME_DIR}/projects/DoZoRProject"
 KEY_PATH="${HOME_DIR}/.ssh/dozor_deploy"
 
-echo "==> Install base packages (git, curl)"
-apt-get update
-apt-get install -y git curl ca-certificates
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd"
+    echo "Run first: sudo bash bootstrap_ubuntu.sh"
+    exit 1
+  fi
+}
+
+echo "==> Check prerequisites"
+require_cmd git
+require_cmd curl
+require_cmd docker
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Missing Docker Compose plugin"
+  echo "Run first: sudo bash bootstrap_ubuntu.sh"
+  exit 1
+fi
 
 echo "==> Generate deploy key (if missing)"
 mkdir -p "${HOME_DIR}/.ssh"
@@ -90,21 +105,8 @@ if [[ ! -d "${DEPLOY_DIR}/.git" ]]; then
 fi
 cd "${DEPLOY_DIR}"
 sudo -u "${TARGET_USER}" git fetch origin "${BRANCH}"
-sudo -u "${TARGET_USER}" git checkout "${BRANCH}"
+sudo -u "${TARGET_USER}" git checkout "${BRANCH}" || sudo -u "${TARGET_USER}" git checkout -b "${BRANCH}" --track "origin/${BRANCH}"
 sudo -u "${TARGET_USER}" git reset --hard "origin/${BRANCH}"
-
-echo "==> Install Docker + Compose"
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  > /etc/apt/sources.list.d/docker.list
-apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-systemctl enable --now docker
-usermod -aG docker "${TARGET_USER}"
 
 echo "==> Prepare .env"
 if [[ ! -f "${DEPLOY_DIR}/.env" ]]; then
