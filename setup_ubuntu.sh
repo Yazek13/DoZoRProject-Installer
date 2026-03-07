@@ -46,7 +46,7 @@ fi
 
 TARGET_USER="${SUDO_USER:-$USER}"
 HOME_DIR="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-DEPLOY_DIR="${HOME_DIR}/projects/DoZoRProject"
+DEPLOY_DIR="${HOME_DIR}/DoZoR"
 KEY_PATH="${HOME_DIR}/.ssh/dozor_deploy"
 
 require_cmd() {
