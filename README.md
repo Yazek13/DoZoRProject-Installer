@@ -29,6 +29,12 @@ cd DoZoRProject-Installer
 sudo bash setup_ubuntu.sh
 ```
 
+Или сразу указать ветку:
+```bash
+sudo bash setup_ubuntu.sh dev
+sudo bash setup_ubuntu.sh master
+```
+
 Скрипт попросит:
 1. Скопировать публичный deploy key.
 2. Добавить его в GitHub:
@@ -94,6 +100,7 @@ docker compose logs -f bot_poller
 Installer включает:
 - `dozor-update.service`
 - `dozor-update.timer` (каждые 15 минут)
+- обновление выбранной ветки `dev` или `master`
 
 Проверка:
 ```bash
@@ -110,6 +117,75 @@ sudo systemctl start dozor-update.service
 ```bash
 journalctl -u dozor-update.service -n 100 --no-pager
 ```
+
+Лог в файле:
+```bash
+tail -n 100 /var/log/dozor-update.log
+```
+
+## Переключить существующий сервер на `dev` или `master`
+
+### Переключить на `dev`
+```bash
+cd ~/projects/DoZoRProject
+git fetch origin dev
+git checkout dev || git checkout -b dev --track origin/dev
+git reset --hard origin/dev
+sudo tee /etc/systemd/system/dozor-update.service >/dev/null <<'EOF'
+[Unit]
+Description=DoZoRProject update (git pull + deploy)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=%h/projects/DoZoRProject
+ExecStart=/bin/bash -lc 'git fetch origin dev && (git show-ref --verify --quiet refs/heads/dev && git checkout dev || git checkout -b dev --track origin/dev) && git reset --hard origin/dev && docker compose up -d --build && docker compose exec -T web python manage.py migrate'
+StandardOutput=append:/var/log/dozor-update.log
+StandardError=append:/var/log/dozor-update.log
+EOF
+sudo sed -i "s|User=%i|User=$USER|; s|WorkingDirectory=%h|WorkingDirectory=$HOME|" /etc/systemd/system/dozor-update.service
+sudo systemctl daemon-reload
+sudo systemctl restart dozor-update.timer
+sudo systemctl start dozor-update.service
+```
+
+### Переключить на `master`
+```bash
+cd ~/projects/DoZoRProject
+git fetch origin master
+git checkout master || git checkout -b master --track origin/master
+git reset --hard origin/master
+sudo tee /etc/systemd/system/dozor-update.service >/dev/null <<'EOF'
+[Unit]
+Description=DoZoRProject update (git pull + deploy)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=%h/projects/DoZoRProject
+ExecStart=/bin/bash -lc 'git fetch origin master && (git show-ref --verify --quiet refs/heads/master && git checkout master || git checkout -b master --track origin/master) && git reset --hard origin/master && docker compose up -d --build && docker compose exec -T web python manage.py migrate'
+StandardOutput=append:/var/log/dozor-update.log
+StandardError=append:/var/log/dozor-update.log
+EOF
+sudo sed -i "s|User=%i|User=$USER|; s|WorkingDirectory=%h|WorkingDirectory=$HOME|" /etc/systemd/system/dozor-update.service
+sudo systemctl daemon-reload
+sudo systemctl restart dozor-update.timer
+sudo systemctl start dozor-update.service
+```
+
+### Более простой вариант через новый проектный скрипт
+Если сервер уже обновлён до свежего `dev`, можно просто:
+```bash
+cd ~/projects/DoZoRProject
+sudo bash scripts/install_auto_update.sh
+```
+Скрипт сам предложит выбрать `dev` или `master`.
 
 ## Частые проблемы
 
@@ -136,7 +212,7 @@ docker compose up -d telethon_worker
 ## Ручное обновление проекта
 ```bash
 cd ~/projects/DoZoRProject
-git pull --ff-only origin master
+git pull --ff-only origin <dev-or-master>
 docker compose up -d --build
 docker compose exec -T web python manage.py migrate
 ```

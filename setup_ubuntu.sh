@@ -14,7 +14,31 @@ set -euo pipefail
 # - enable autostart + auto-update (systemd)
 
 REPO_SSH="git@github.com:Yazek13/DoZoRProject.git"
-BRANCH="master"
+
+choose_branch() {
+  local current="${1:-}"
+  case "$current" in
+    dev|master)
+      echo "$current"
+      return 0
+      ;;
+  esac
+
+  echo "Select deploy branch:"
+  echo "1) dev"
+  echo "2) master"
+  read -r -p "Choice [1-2, default 1]: " branch_choice
+  case "${branch_choice:-1}" in
+    1) echo "dev" ;;
+    2) echo "master" ;;
+    *)
+      echo "Unsupported branch choice: ${branch_choice}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+BRANCH="$(choose_branch "${1:-}")"
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run as root: sudo bash scripts/setup_ubuntu.sh"
@@ -126,14 +150,17 @@ EOF
 cat > /etc/systemd/system/dozor-update.service <<EOF
 [Unit]
 Description=DoZoRProject update (git pull + deploy)
-After=docker.service
+After=docker.service network-online.target
 Requires=docker.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=${TARGET_USER}
 WorkingDirectory=${DEPLOY_DIR}
-ExecStart=/bin/bash -lc 'git fetch origin ${BRANCH} && git reset --hard origin/${BRANCH} && docker compose up -d --build && docker compose exec -T web python manage.py migrate'
+ExecStart=/bin/bash -lc 'git fetch origin ${BRANCH} && (git show-ref --verify --quiet refs/heads/${BRANCH} && git checkout ${BRANCH} || git checkout -b ${BRANCH} --track origin/${BRANCH}) && git reset --hard origin/${BRANCH} && docker compose up -d --build && docker compose exec -T web python manage.py migrate'
+StandardOutput=append:/var/log/dozor-update.log
+StandardError=append:/var/log/dozor-update.log
 EOF
 
 cat > /etc/systemd/system/dozor-update.timer <<EOF
